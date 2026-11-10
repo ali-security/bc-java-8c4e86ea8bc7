@@ -1,3 +1,42 @@
 language: java
-jdk:
-  - openjdk8
+dist: jammy
+
+# Runs the jdk15to18 test suite the way build1-5to1-8 does (`sh build1-5to1-8` then
+# `sh build1-5to1-8 test`, i.e. ant/jdk15+.xml build + test) on JDK 8u402 (the JDK the public
+# jar was built with) and Ant 1.10.14 (upstream ci/build_1_8.sh uses Ant 1.10). The AllTests
+# suites are split over jobs with JUNIT_INCLUDE_TESTS / JUNIT_EXCLUDE_TESTS so each job stays
+# under Travis' 50-minute limit; together the jobs run every AllTests suite.
+env:
+  global:
+    - JDKPATH=$HOME/jdk8u402-b06
+    - JDK5PATH=$HOME/jdk8u402-b06
+    - ANT_HOME=$HOME/apache-ant-1.10.14
+    - ANT_ARGS=-Djunit.printsummary=on
+  jobs:
+    - JUNIT_EXCLUDE_TESTS="org/bouncycastle/pqc/**"
+    - JUNIT_INCLUDE_TESTS="org/bouncycastle/pqc/crypto/test/AllTests.java"
+    - JUNIT_INCLUDE_TESTS="org/bouncycastle/pqc/**/AllTests.java" JUNIT_EXCLUDE_TESTS="org/bouncycastle/pqc/crypto/test/AllTests.java"
+
+before_install:
+  - curl -fsSL --retry 5 https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u402-b06/OpenJDK8U-jdk_x64_linux_hotspot_8u402b06.tar.gz | tar xz -C $HOME
+  - curl -fsSL --retry 5 https://archive.apache.org/dist/ant/binaries/apache-ant-1.10.14-bin.tar.gz | tar xz -C $HOME
+  - curl -fsSL --retry 5 https://codeload.github.com/bcgit/bc-test-data/tar.gz/refs/tags/r1rv78v1 | tar xz -C $TRAVIS_BUILD_DIR/..
+  - mv $TRAVIS_BUILD_DIR/../bc-test-data-r1rv78v1 $TRAVIS_BUILD_DIR/../bc-test-data
+  - mkdir -p $TRAVIS_BUILD_DIR/../bc-test-data/pkix
+  - for f in mal-root mal-ca1 mal-ca2 mal-leaf; do curl -fsSL --retry 5 -o $TRAVIS_BUILD_DIR/../bc-test-data/pkix/$f.crt https://raw.githubusercontent.com/bcgit/bc-test-data/eef6986af224159d2b6c6a0234dde10c5db28794/pkix/$f.crt; done
+  - export JAVA_HOME=$JDKPATH
+  - export PATH=$ANT_HOME/bin:$JAVA_HOME/bin:$PATH
+  - java -version
+  - ant -version
+
+install: true
+
+script:
+  - sh build1-5to1-8 > ant-build.log 2>&1; tail -n 30 ant-build.log
+  - sh .travis/check-ant-log.sh ant-build.log
+  - while sleep 300; do echo "keepalive $(date -u +%H.%M)"; done &
+  - sh build1-5to1-8 test
+  - python3 .travis/seal-test-summary.py build/artifacts/jdk1.5/reports/xml
+
+after_script:
+  - sh .travis/wait-for-log.sh 420

@@ -261,12 +261,13 @@ public class SMIMEToolkitTest
 
         MimeBodyPart res = gen.generateEncapsulated(msg);
 
-        Assert.assertTrue(toolkit.isValidSignature(res, new JcaSimpleSignerInfoVerifierBuilder().setProvider(BC).build(identity.getCertificate())));
+        // smimeTKcert.pem expired 2025-01-08 and the certificate-based verifiers reject a signingTime
+        // outside its validity, so verify with the public key (as upstream bc-java commit 04555bfc does).
+        Assert.assertTrue(toolkit.isValidSignature(res, new JcaSimpleSignerInfoVerifierBuilder().setProvider(BC).build(identity.getX509Certificate().getPublicKey())));
 
         MimeMessage body = makeMimeMessage(res);
 
-        Assert.assertTrue(toolkit.isValidSignature(body, new JcaSimpleSignerInfoVerifierBuilder().setProvider(BC).build(identity.getCertificate())));
-        Assert.assertTrue(toolkit.isValidSignature(body, new JcaSimpleSignerInfoVerifierBuilder().setProvider(BC).build(identity.getX509Certificate())));
+        Assert.assertTrue(toolkit.isValidSignature(body, new JcaSimpleSignerInfoVerifierBuilder().setProvider(BC).build(identity.getX509Certificate().getPublicKey())));
     }
 
     public void testEncryptedMimeBodyPart()
